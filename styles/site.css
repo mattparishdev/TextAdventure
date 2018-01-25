@@ -1,0 +1,22 @@
+body {
+    background-color: black;
+    margin: 0 auto;
+    color: green;
+    font: 1.25em Consolas;
+}
+
+body div {
+    display: flex;
+    width: 100%;
+}
+
+.input {
+    background-color: inherit;
+    color: inherit;
+    min-width: 1%;
+    max-width: 99%;
+}
+
+#input:focus {
+    outline: none;
+}
