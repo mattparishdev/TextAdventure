@@ -1,99 +1,173 @@
-/***
- * @typedef {function} CommandFunction
- * @desc The function that is executed when a command is invoked
- * @returns {string} A response that will be displayed to the console. This response can be formatted with HTML
- */
-
-/***
- * @typedef {object} Command
- * @desc An object which defines a console command
- * @property {CommandFunction} execute - The function to invoke when the command is requested
- * @property {string} helpText -
- *  An explanation of the command's purpose, to be displayed to the user when help is
- * @property {array} params -
- *  An array of {@link CommandParam} objects that defines the expected arguments to the command
- */
-
-/***
- * Map of available console commands
- * @type {Object.<string, Command>}
- */
-const Commands = (function()
-{
-  /***
-   * @typedef {object} CommandParam
-   * @desc An object which defines a console command parameter
-   * @property {string} name - Name of the parameter
-   * @property {string} type - Expected type of the parameter
-   * @property {*} defaultValue - Default value for the parameter if it is not supplied as an argument
-   */
-
-  /***
-   * Helper method to create a {@link CommandParam}
-   * @param {string} name
-   * @param {string} type
-   * @param {*} [defaultValue=undefined]
-   * @returns {CommandParam}
-   * @constructor
-   */
-  function CommandParam(name, type, defaultValue)
+const CommandParam = (
+  function ()
   {
-    return {
-      name: name,
-      type: type,
-      defaultValue: defaultValue
-    };
-  }
-
-  /***
-   * Helper method to create a {@link Command}
-   * @param {CommandFunction} execute
-   * @param {string} help
-   * @param {array} [params=[]]
-   * @returns {Command}
-   * @constructor
-   */
-  function Command(execute, help, params)
-  {
-    return {
-      execute: execute,
-      helpText: help,
-      params: params === undefined ? [] : params
-    };
-  }
-
-  const _helpCommand = new Command(function ()
+    function parseArgument(value, type)
     {
-      alert("Help");
+      let retVal = null;
 
-      return "";
-    },
-    "Get information about the available commands, or about a specific command",
-    [
-      new CommandParam("command", "string")
-    ]
-  );
-
-  const _clsCommand = new Command(function()
-    {
-      // Set a timeout of 5ms in order to clear the screen AFTER the previous command has been added
-      setTimeout(function()
+      switch(type)
       {
-        const input = $("#input");
-        const activeConsole = $("#activeConsole");
+        case "string":
+          retVal = value;
+          break;
+        case "int":
+          const parsedInt = Number.parseInt(value);
+          if(isNaN(parsedInt) === false)
+          {
+            retVal = parsedInt;
+          }
+          break;
+        case "float":
+          const parsedFloat = Number.parseFloat(value);
+          if(isNan(parsedFloat) === false)
+          {
+            retVal = parsedFloat;
+          }
+          break;
+      }
 
-        input.html("");
-        activeConsole.siblings().remove();
-      }, 5);
+      return retVal;
+    }
 
-      return "";
-    },
-    "Clear the screen"
-  );
+    return function (name, type, defaultValue)
+    {
+      return {
+        getName: () => name,
+        getType: () => type,
+        hasDefault: () => defaultValue !== undefined,
+        getDefault: () => defaultValue,
+        parseArgument: (argument) =>
+        {
+          let retVal = defaultValue;
 
-  return {
-    help: _helpCommand,
-    "?": _helpCommand,
-    cls: _clsCommand
-  };
-})();
+          if(argument !== undefined)
+          {
+            retVal = parseArgument(argument, type);
+          }
+
+          return retVal;
+        }
+      };
+    };
+  }
+)();
+
+const Command = (
+  function ()
+  {
+    function parseRequest(rawRequest)
+    {
+      let parsedRequest = [];
+
+      rawRequest.replace(/-(\D+?)\s+?(".+"|\d+\.?\d+)/g, function (match, g1, g2)
+      {
+        parsedRequest.push({[g1]: g2});
+      });
+
+      return parsedRequest;
+    }
+
+    function getCommandArguments(parsedRequest, cmdParams)
+    {
+      let retVal =
+        {
+          cmdArgs: [],
+          errors: []
+        };
+
+      cmdParams.forEach(function (value)
+      {
+        const rawArg = parsedRequest[value.getName()];
+
+        if(rawArg !== undefined)
+        {
+          const parsedArg = value.parseArgument(rawArg);
+
+          if(parsedArg != null)
+          {
+            retVal.cmdArgs.push(parsedArg);
+          }
+          else
+          {
+            retVal.errors.push(`Parameter ${value.getName()} was not of expected type ${value.getType()}`);
+          }
+        }
+        else if(rawArg.hasDefault())
+        {
+          retVal.cmdArgs.push(rawArg.getDefault());
+        }
+        else
+        {
+          retVal.errors.push(`Required parameter ${value.getName()} was not provided`);
+        }
+      });
+
+      return retVal;
+    }
+
+    return function (helpText, execute, cmdParams = [])
+    {
+      const _helpText = helpText;
+      const _cmdParams = cmdParams;
+
+      return {
+        execute: (rawRequest) =>
+        {
+          const parsedRequest = parseRequest(rawRequest.trim());
+          const cmdArgsResult = getCommandArguments(parsedRequest, _cmdParams);
+
+          if(cmdArgsResult.errors.length === 0)
+          {
+            execute(...cmdArgsResult.cmdArgs);
+          }
+          else
+          {
+            // TODO: handle incorrect argument errors
+            alert(cmdArgsResult.errors);
+          }
+        },
+        help: () => _helpText
+      };
+    };
+  }
+)();
+
+const Commands = (
+  function ()
+  {
+    const _helpCommand = new Command(
+      "Get information about the available commands, or about a specific command",
+      function (commandName)
+      {
+        alert(`Help: ${commandName}`);
+      },
+      [
+        new CommandParam("command", "string")
+      ]
+    );
+
+    const _clsCommand = new Command(
+      "Clear the screen",
+      function ()
+      {
+        // Set a timeout of 5ms in order to clear the screen AFTER the previous command has been added
+        setTimeout(function ()
+        {
+          const input = $("#input");
+          const activeConsole = $("#activeConsole");
+
+          input.html("");
+          activeConsole.siblings().remove();
+        }, 5);
+
+        return "";
+      }
+    );
+
+    return {
+      help: _helpCommand,
+      "?": _helpCommand,
+      cls: _clsCommand
+    };
+  }
+)();
